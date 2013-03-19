@@ -81,7 +81,7 @@ public final class DefaultBatchSession implements BatchSession {
         try {
             _vm = session.getWorkspace().getVersionManager();
         } catch (RepositoryException e) {
-            LOGGER.error("[BatchManagerImpl] Failed to get VersionManager. Will not purge version history for deleted nodes");
+            LOGGER.error("[DefaultBatchSession] Failed to get VersionManager. Will not purge version history for deleted nodes");
         }
 
         this.versionManager = _vm;
@@ -136,15 +136,15 @@ public final class DefaultBatchSession implements BatchSession {
 
     /**
      * The client should record all totalPaths modified during JCR operations and call this method with
-     * those totalPaths so that the BatchManagerImpl can track the number of changes in the current batch.
+     * those totalPaths so that the {@link DefaultBatchSession} can track the number of changes in the current batch.
      * If the sum of the number of newly modified totalPaths and the number previously uncommitted changes equals or
      * exceeds the batch size, the session will be saved and the listener's onSave() method
      * will be called with the number of changes committed by this save and a set containing the modified totalPaths.
-     * If the value of the moreChanges argument is less than 0, the BatchManagerImpl will immediately
+     * If the value of the moreChanges argument is less than 0, the {@link DefaultBatchSession} will immediately
      * save any uncommitted changes.
      *
      * @param changedPaths JCR totalPaths that were modified since the last call to processChanges. Must not be null.
-     * @throws javax.jcr.RepositoryException if the BatchManagerImpl is not live, or if the call to session.save() fails.
+     * @throws javax.jcr.RepositoryException if the {@link DefaultBatchSession} is not live, or if the call to session.save() fails.
      */
     private void processChanges(String... changedPaths) throws RepositoryException {
         if (changedPaths == null) {
@@ -155,16 +155,16 @@ public final class DefaultBatchSession implements BatchSession {
     
     /**
      * The client should count all local JCR modifications and call this method with
-     * that count so that the BatchManagerImpl can track the number of changes in the current batch.
+     * that count so that the {@link DefaultBatchSession} can track the number of changes in the current batch.
      * If the sum of the moreChanges argument and previously uncommitted changes equals or
      * exceeds the batch size, the session will be saved and the listener's onSave() method
      * will be called with the number of changes committed by this save.
-     * If the value of the moreChanges argument is less than 0, the BatchManagerImpl will immediately
+     * If the value of the moreChanges argument is less than 0, the {@link DefaultBatchSession} will immediately
      * save any uncommitted changes.
      *
      * @param changedPaths collection of JCR totalPaths that were modified since the last call to processChanges.
      *                     May be empty. Must not be null.
-     * @throws javax.jcr.RepositoryException if the BatchManagerImpl is not live, or if the call to session.save() fails.
+     * @throws javax.jcr.RepositoryException if the {@link DefaultBatchSession} is not live, or if the call to session.save() fails.
      */
     private void processChanges(Collection<String> changedPaths, boolean sessionSave) throws RepositoryException {
         if (changedPaths == null) {

@@ -27,6 +27,7 @@
 
 package net.adamcin.commons.jcr.batch;
 
+import net.adamcin.commons.testing.junit.TestBody;
 import org.apache.jackrabbit.JcrConstants;
 import org.apache.jackrabbit.core.TransientRepository;
 import org.junit.After;
@@ -63,167 +64,157 @@ public class DefaultBatchSessionTest {
 
     @Test
     public void testCreateSession() {
-        Session session = null;
-        try {
-            session = repository.login(new SimpleCredentials("admin", "admin".toCharArray()));
+        TestBody.test(new SessionTestBody() {
+            @Override
+            protected void execute() throws Exception {
+                session = repository.login(new SimpleCredentials("admin", "admin".toCharArray()));
 
-            BatchSaveTracker tracker = new BatchSaveTracker();
+                BatchSaveTracker tracker = new BatchSaveTracker();
 
-            DefaultBatchSession batchSession = new DefaultBatchSession(session);
-            batchSession.setBatchSize(5);
-            batchSession.addListener(tracker);
+                DefaultBatchSession batchSession = new DefaultBatchSession(session);
+                batchSession.setBatchSize(5);
+                batchSession.addListener(tracker);
 
-            assertTrue("managed session is live", batchSession.isLive());
+                assertTrue("managed session is live", batchSession.isLive());
 
-            session.logout();
-
-            assertFalse("managed session is not live", batchSession.isLive());
-
-
-        } catch (Exception e) {
-            LOGGER.error("Exception: {}", e);
-            TestUtil.sprintFail(e);
-        } finally {
-            if (session != null && session.isLive()) {
                 session.logout();
+
+                assertFalse("managed session is not live", batchSession.isLive());
             }
-        }
+        });
     }
 
     @Test
     public void testAddNodes() {
-        Session session = null;
-        try {
-            session = repository.login(new SimpleCredentials("admin", "admin".toCharArray()));
+        TestBody.test(new SessionTestBody() {
+            @Override
+            protected void execute() throws Exception {
+                session = repository.login(new SimpleCredentials("admin", "admin".toCharArray()));
 
-            BatchSaveTracker tracker = new BatchSaveTracker();
+                BatchSaveTracker tracker = new BatchSaveTracker();
 
-            DefaultBatchSession batchSession = new DefaultBatchSession(session);
-            batchSession.setBatchSize(5);
-            batchSession.addListener(tracker);
+                DefaultBatchSession batchSession = new DefaultBatchSession(session);
+                batchSession.setBatchSize(5);
+                batchSession.addListener(tracker);
 
-            Node n0 = batchSession.getRootNode().addNode("n0", JcrConstants.NT_FOLDER);
+                Node n0 = batchSession.getRootNode().addNode("n0", JcrConstants.NT_FOLDER);
 
-            assertEquals("managed session should be returned from Node.getSession()",
-                    batchSession, n0.getSession());
+                assertEquals("managed session should be returned from Node.getSession()",
+                        batchSession, n0.getSession());
 
-            Node n1 = n0.addNode("n1", JcrConstants.NT_FOLDER);
-            Node n2 = n1.addNode("n2", JcrConstants.NT_FOLDER);
-            assertEquals("no changes yet", 0, tracker.getTotalCount());
-            assertTrue("original session should have pending changes",
-                    session.hasPendingChanges());
-            Node n3 = n2.addNode("n3", JcrConstants.NT_FOLDER);
-            assertEquals("should have 5 changes", 5, tracker.getTotalCount());
-            assertFalse("original session should not have pending changes",
-                    session.hasPendingChanges());
-
-
-            Node n4 = n3.addNode("n4", JcrConstants.NT_FOLDER);
-            assertEquals("still has 5 changes (after n4)", 5, tracker.getTotalCount());
-
-            // force save
-            n4.getSession().save();
-            assertEquals("should have 2 more changes (after n4)", 7, tracker.getTotalCount());
+                Node n1 = n0.addNode("n1", JcrConstants.NT_FOLDER);
+                Node n2 = n1.addNode("n2", JcrConstants.NT_FOLDER);
+                assertEquals("no changes yet", 0, tracker.getTotalCount());
+                assertTrue("original session should have pending changes",
+                        session.hasPendingChanges());
+                Node n3 = n2.addNode("n3", JcrConstants.NT_FOLDER);
+                assertEquals("should have 5 changes", 5, tracker.getTotalCount());
+                assertFalse("original session should not have pending changes",
+                        session.hasPendingChanges());
 
 
-        } catch (Exception e) {
-            LOGGER.error("Exception: {}", e);
-            TestUtil.sprintFail(e);
-        } finally {
-            if (session != null && session.isLive()) {
-                session.logout();
+                Node n4 = n3.addNode("n4", JcrConstants.NT_FOLDER);
+                assertEquals("still has 5 changes (after n4)", 5, tracker.getTotalCount());
+
+                // force save
+                n4.getSession().save();
+                assertEquals("should have 2 more changes (after n4)", 7, tracker.getTotalCount());
             }
-        }
+        });
     }
 
     @Test
     public void testPurgeVersion() {
+        TestBody.test(new SessionTestBody() {
+            @Override
+            protected void execute() throws Exception {
+                session = repository.login(new SimpleCredentials("admin", "admin".toCharArray()));
+
+                BatchSaveTracker tracker = new BatchSaveTracker();
+
+                DefaultBatchSession batchSession = new DefaultBatchSession(session);
+                batchSession.setBatchSize(5);
+                batchSession.addListener(tracker);
+
+                VersionManager vm = batchSession.getWorkspace().getVersionManager();
+
+                Node v0 = batchSession.getRootNode().addNode("v0", JcrConstants.NT_UNSTRUCTURED);
+
+                v0.addMixin(JcrConstants.MIX_VERSIONABLE);
+                v0.setProperty("versionState", "initial");
+
+                assertEquals("versionState property should be", "initial", v0.getProperty("versionState").getString());
+
+                batchSession.save();
+
+                vm.checkin(v0.getPath());
+                vm.checkout(v0.getPath());
+
+                VersionHistory vh0 = vm.getVersionHistory(v0.getPath());
+
+                String vhPath = vh0.getPath();
+
+                Node v0r0 = vh0.getVersion("1.0").getFrozenNode();
+
+                assertTrue("version 1.0 frozen node should have versionState property", v0r0.hasProperty("versionState"));
+                assertEquals("versionState property should be", "initial", v0r0.getProperty("versionState").getString());
+
+                batchSession.removeItem(v0.getPath());
+
+                batchSession.save();
+
+                assertFalse("/v0 should no longer exist", batchSession.getRootNode().hasNode("v0"));
+                assertEquals("tracker should indicate no total purged versions", 0, tracker.getTotalVersionCount());
+                assertEquals("tracker should indicate no expected purged versions", 0, tracker.getExpectedVersionCount());
+
+                assertTrue("there should still be a version history at the same path as before",
+                        batchSession.getRootNode().hasNode(vhPath.substring(1)));
+
+                Node v1 = batchSession.getRootNode().addNode("v1", JcrConstants.NT_UNSTRUCTURED);
+
+                v1.addMixin(JcrConstants.MIX_VERSIONABLE);
+                v1.setProperty("versionState", "initial");
+
+                assertEquals("versionState property should be", "initial", v1.getProperty("versionState").getString());
+
+                batchSession.save();
+
+                vm.checkin(v1.getPath());
+                vm.checkout(v1.getPath());
+
+                VersionHistory vh1 = vm.getVersionHistory(v1.getPath());
+
+                String vh1Path = vh1.getPath();
+
+                Node v1r0 = vh1.getVersion("1.0").getFrozenNode();
+
+                assertTrue("version 1.0 frozen node should have versionState property", v1r0.hasProperty("versionState"));
+                assertEquals("versionState property should be", "initial", v1r0.getProperty("versionState").getString());
+
+                batchSession.purge(v1.getPath());
+
+                assertEquals("tracker should indicate zero total purged versions", 0, tracker.getTotalVersionCount());
+                assertEquals("tracker should indicate one expected purged versions", 1, tracker.getExpectedVersionCount());
+
+                batchSession.save();
+
+                assertFalse("/v1 should no longer exist", batchSession.getRootNode().hasNode("v1"));
+                assertEquals("tracker should indicate one total purged versions", 1, tracker.getTotalVersionCount());
+                assertEquals("tracker should indicate one expected purged versions", 1, tracker.getExpectedVersionCount());
+            }
+        });
+
+    }
+
+    abstract class SessionTestBody extends TestBody {
         Session session = null;
-        try {
-            session = repository.login(new SimpleCredentials("admin", "admin".toCharArray()));
 
-            BatchSaveTracker tracker = new BatchSaveTracker();
-
-            DefaultBatchSession batchSession = new DefaultBatchSession(session);
-            batchSession.setBatchSize(5);
-            batchSession.addListener(tracker);
-
-            VersionManager vm = batchSession.getWorkspace().getVersionManager();
-
-            Node v0 = batchSession.getRootNode().addNode("v0", JcrConstants.NT_UNSTRUCTURED);
-
-            v0.addMixin(JcrConstants.MIX_VERSIONABLE);
-            v0.setProperty("versionState", "initial");
-
-            assertEquals("versionState property should be", "initial", v0.getProperty("versionState").getString());
-
-            batchSession.save();
-
-            vm.checkin(v0.getPath());
-            vm.checkout(v0.getPath());
-
-            VersionHistory vh0 = vm.getVersionHistory(v0.getPath());
-
-            String vhPath = vh0.getPath();
-
-            Node v0r0 = vh0.getVersion("1.0").getFrozenNode();
-
-            assertTrue("version 1.0 frozen node should have versionState property", v0r0.hasProperty("versionState"));
-            assertEquals("versionState property should be", "initial", v0r0.getProperty("versionState").getString());
-
-            batchSession.removeItem(v0.getPath());
-
-            batchSession.save();
-
-            assertFalse("/v0 should no longer exist", batchSession.getRootNode().hasNode("v0"));
-            assertEquals("tracker should indicate no total purged versions", 0, tracker.getTotalVersionCount());
-            assertEquals("tracker should indicate no expected purged versions", 0, tracker.getExpectedVersionCount());
-
-            assertTrue("there should still be a version history at the same path as before",
-                    batchSession.getRootNode().hasNode(vhPath.substring(1)));
-
-            Node v1 = batchSession.getRootNode().addNode("v1", JcrConstants.NT_UNSTRUCTURED);
-
-            v1.addMixin(JcrConstants.MIX_VERSIONABLE);
-            v1.setProperty("versionState", "initial");
-
-            assertEquals("versionState property should be", "initial", v1.getProperty("versionState").getString());
-
-            batchSession.save();
-
-            vm.checkin(v1.getPath());
-            vm.checkout(v1.getPath());
-
-            VersionHistory vh1 = vm.getVersionHistory(v1.getPath());
-
-            String vh1Path = vh1.getPath();
-
-            Node v1r0 = vh1.getVersion("1.0").getFrozenNode();
-
-            assertTrue("version 1.0 frozen node should have versionState property", v1r0.hasProperty("versionState"));
-            assertEquals("versionState property should be", "initial", v1r0.getProperty("versionState").getString());
-
-            batchSession.purge(v1.getPath());
-
-            assertEquals("tracker should indicate zero total purged versions", 0, tracker.getTotalVersionCount());
-            assertEquals("tracker should indicate one expected purged versions", 1, tracker.getExpectedVersionCount());
-
-            batchSession.save();
-
-            assertFalse("/v1 should no longer exist", batchSession.getRootNode().hasNode("v1"));
-            assertEquals("tracker should indicate one total purged versions", 1, tracker.getTotalVersionCount());
-            assertEquals("tracker should indicate one expected purged versions", 1, tracker.getExpectedVersionCount());
-
-
-        } catch (Exception e) {
-            LOGGER.error("Exception: {}", e);
-            TestUtil.sprintFail(e);
-        } finally {
+        @Override
+        protected void cleanUp() {
             if (session != null && session.isLive()) {
                 session.logout();
             }
         }
-
     }
 
     static class BatchSaveTracker extends DefaultBatchSessionListener {
